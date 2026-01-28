@@ -1,0 +1,140 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vostok"
+version = "1.0.0"
+description = "Vostok Climate Agent - Access ERA5 reanalysis data through Model Context Protocol"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Vostok Team", email = "vostok@example.com"}
+]
+keywords = [
+    "era5",
+    "climate",
+    "mcp",
+    "model-context-protocol",
+    "oceanography",
+    "reanalysis",
+    "weather",
+    "xarray",
+    "zarr"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+
+dependencies = [
+    "mcp>=1.0.0",
+    "arraylake>=0.10.0",
+    "xarray>=2024.10.0",
+    "zarr>=3.0.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+agent = [
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-core>=0.3.0",
+    "openai>=1.0.0",
+    "jupyter_client>=8.0.0",
+    "ipykernel>=6.0.0",
+    "matplotlib>=3.7.0",
+    "scipy>=1.10.0",
+    "seaborn>=0.12.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings[python]>=0.24.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/era5-mcp"
+Documentation = "https://github.com/yourusername/era5-mcp#readme"
+Repository = "https://github.com/yourusername/era5-mcp"
+Issues = "https://github.com/yourusername/era5-mcp/issues"
+
+[project.scripts]
+vostok-mcp = "vostok.server:main"
+vostok-agent = "vostok.agent:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vostok"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312']
+
+[tool.ruff]
+line-length = 100
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --cov=src/vostok --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["src/vostok"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]

@@ -1,0 +1,283 @@
+"""
+ERA5 MCP Memory System
+======================
+
+Persistent memory for dataset caching and conversation history.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from vostok.config import get_memory_dir, CONFIG
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# DATA STRUCTURES
+# ============================================================================
+
+@dataclass
+class DatasetRecord:
+    """Record of a downloaded dataset."""
+
+    path: str
+    variable: str
+    query_type: str
+    start_date: str
+    end_date: str
+    lat_bounds: tuple[float, float]
+    lon_bounds: tuple[float, float]
+    file_size_bytes: int
+    download_timestamp: str
+    shape: Optional[tuple[int, ...]] = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "DatasetRecord":
+        # Convert list to tuple for bounds
+        if isinstance(data.get("lat_bounds"), list):
+            data["lat_bounds"] = tuple(data["lat_bounds"])
+        if isinstance(data.get("lon_bounds"), list):
+            data["lon_bounds"] = tuple(data["lon_bounds"])
+        if isinstance(data.get("shape"), list):
+            data["shape"] = tuple(data["shape"])
+        return cls(**data)
+
+
+@dataclass
+class Message:
+    """A conversation message."""
+
+    role: str
+    content: str
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Message":
+        return cls(**data)
+
+
+# ============================================================================
+# MEMORY MANAGER
+# ============================================================================
+
+class MemoryManager:
+    """
+    Manages persistent memory for ERA5 MCP.
+
+    Features:
+    - Dataset cache registry
+    - Conversation history
+    - Automatic persistence to disk
+    """
+
+    def __init__(self, memory_dir: Optional[Path] = None):
+        self.memory_dir = memory_dir or get_memory_dir()
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
+
+        # File paths
+        self.datasets_file = self.memory_dir / "datasets.json"
+        self.conversations_file = self.memory_dir / "conversations.json"
+
+        # In-memory storage
+        self.datasets: Dict[str, DatasetRecord] = {}
+        self.conversations: List[Message] = []
+
+        # Load existing data
+        self._load_all()
+
+        logger.info(
+            f"MemoryManager initialized: {len(self.conversations)} messages, "
+            f"{len(self.datasets)} datasets"
+        )
+
+    # ========================================================================
+    # PERSISTENCE
+    # ========================================================================
+
+    def _load_all(self) -> None:
+        """Load all memory from disk."""
+        self._load_datasets()
+        self._load_conversations()
+
+    def _load_datasets(self) -> None:
+        """Load dataset registry from disk."""
+        if self.datasets_file.exists():
+            try:
+                with open(self.datasets_file, "r") as f:
+                    data = json.load(f)
+                    for path, record_data in data.items():
+                        self.datasets[path] = DatasetRecord.from_dict(record_data)
+            except Exception as e:
+                logger.warning(f"Failed to load datasets: {e}")
+
+    def _save_datasets(self) -> None:
+        """Save dataset registry to disk."""
+        try:
+            with open(self.datasets_file, "w") as f:
+                json.dump({p: r.to_dict() for p, r in self.datasets.items()}, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save datasets: {e}")
+
+    def _load_conversations(self) -> None:
+        """Load conversation history from disk."""
+        if self.conversations_file.exists():
+            try:
+                with open(self.conversations_file, "r") as f:
+                    data = json.load(f)
+                    self.conversations = [Message.from_dict(m) for m in data]
+                    # Trim to max history
+                    if len(self.conversations) > CONFIG.max_conversation_history:
+                        self.conversations = self.conversations[-CONFIG.max_conversation_history:]
+            except Exception as e:
+                logger.warning(f"Failed to load conversations: {e}")
+
+    def _save_conversations(self) -> None:
+        """Save conversation history to disk."""
+        try:
+            with open(self.conversations_file, "w") as f:
+                json.dump([m.to_dict() for m in self.conversations], f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save conversations: {e}")
+
+    # ========================================================================
+    # DATASET MANAGEMENT
+    # ========================================================================
+
+    def register_dataset(
+        self,
+        path: str,
+        variable: str,
+        query_type: str,
+        start_date: str,
+        end_date: str,
+        lat_bounds: tuple[float, float],
+        lon_bounds: tuple[float, float],
+        file_size_bytes: int = 0,
+        shape: Optional[tuple[int, ...]] = None,
+    ) -> DatasetRecord:
+        """Register a downloaded dataset."""
+        record = DatasetRecord(
+            path=path,
+            variable=variable,
+            query_type=query_type,
+            start_date=start_date,
+            end_date=end_date,
+            lat_bounds=lat_bounds,
+            lon_bounds=lon_bounds,
+            file_size_bytes=file_size_bytes,
+            download_timestamp=datetime.now().isoformat(),
+            shape=shape,
+        )
+        self.datasets[path] = record
+        self._save_datasets()
+        logger.info(f"Registered dataset: {path}")
+        return record
+
+    def get_dataset(self, path: str) -> Optional[DatasetRecord]:
+        """Get dataset record by path."""
+        return self.datasets.get(path)
+
+    def list_datasets(self) -> str:
+        """Return formatted list of cached datasets."""
+        if not self.datasets:
+            return "No datasets in cache."
+
+        lines = ["Cached Datasets:", "=" * 70]
+        for path, record in self.datasets.items():
+            if os.path.exists(path):
+                size_str = self._format_size(record.file_size_bytes)
+                lines.append(
+                    f"  {record.variable:5} | {record.start_date} to {record.end_date} | "
+                    f"{record.query_type:8} | {size_str:>10}"
+                )
+                lines.append(f"        Path: {path}")
+            else:
+                lines.append(f"  [MISSING] {path}")
+
+        return "\n".join(lines)
+
+    def cleanup_missing_datasets(self) -> int:
+        """Remove records for datasets that no longer exist."""
+        missing = [p for p in self.datasets if not os.path.exists(p)]
+        for path in missing:
+            del self.datasets[path]
+            logger.info(f"Removed missing dataset: {path}")
+        if missing:
+            self._save_datasets()
+        return len(missing)
+
+    # ========================================================================
+    # CONVERSATION MANAGEMENT
+    # ========================================================================
+
+    def add_message(self, role: str, content: str) -> Message:
+        """Add a message to conversation history."""
+        msg = Message(role=role, content=content)
+        self.conversations.append(msg)
+
+        # Trim if needed
+        if len(self.conversations) > CONFIG.max_conversation_history:
+            self.conversations = self.conversations[-CONFIG.max_conversation_history:]
+
+        self._save_conversations()
+        return msg
+
+    def get_conversation_history(self, n_messages: Optional[int] = None) -> List[Message]:
+        """Get recent conversation history."""
+        if n_messages is None:
+            return list(self.conversations)
+        return list(self.conversations)[-n_messages:]
+
+    def clear_conversation(self) -> None:
+        """Clear conversation history."""
+        self.conversations.clear()
+        self._save_conversations()
+        logger.info("Conversation history cleared")
+
+    # ========================================================================
+    # UTILITIES
+    # ========================================================================
+
+    @staticmethod
+    def _format_size(size_bytes: int) -> str:
+        """Format file size in human-readable format."""
+        for unit in ["B", "KB", "MB", "GB"]:
+            if size_bytes < 1024:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024
+        return f"{size_bytes:.1f} TB"
+
+
+# ============================================================================
+# GLOBAL INSTANCE
+# ============================================================================
+
+_memory_instance: Optional[MemoryManager] = None
+
+
+def get_memory() -> MemoryManager:
+    """Get the global memory manager instance."""
+    global _memory_instance
+    if _memory_instance is None:
+        _memory_instance = MemoryManager()
+    return _memory_instance
+
+
+def reset_memory() -> None:
+    """Reset the global memory instance."""
+    global _memory_instance
+    _memory_instance = None

@@ -1,0 +1,65 @@
+"""
+ERA5 MCP - ERA5 Climate Data via Model Context Protocol
+========================================================
+
+A production-ready MCP server for accessing ERA5 reanalysis data from
+Earthmover's cloud-optimized archive.
+
+Features:
+- ERA5 reanalysis data retrieval (SST, temperature, wind, pressure, etc.)
+- Intelligent caching with persistent memory
+- Predefined geographic regions (El Niño, Atlantic, Pacific, etc.)
+- Full MCP protocol support for Claude and other AI assistants
+
+Example usage as MCP server:
+    # In .mcp.json
+    {
+        "mcpServers": {
+            "era5": {
+                "command": "era5-mcp",
+                "env": {"ARRAYLAKE_API_KEY": "your_key"}
+            }
+        }
+    }
+
+Example usage as Python library:
+    from vostok import retrieve_era5_data, list_available_variables
+
+    # Download SST data
+    result = retrieve_era5_data(
+        query_type="temporal",
+        variable_id="sst",
+        start_date="2024-01-01",
+        end_date="2024-01-07",
+        region="california_coast"
+    )
+"""
+
+__version__ = "1.0.0"
+__author__ = "Vostok Team"
+
+from vostok.config import (
+    ERA5_VARIABLES,
+    GEOGRAPHIC_REGIONS,
+    get_variable_info,
+    get_short_name,
+    list_available_variables,
+)
+from vostok.retrieval import retrieve_era5_data
+from vostok.memory import MemoryManager, get_memory
+
+__all__ = [
+    # Version
+    "__version__",
+    # Config
+    "ERA5_VARIABLES",
+    "GEOGRAPHIC_REGIONS",
+    "get_variable_info",
+    "get_short_name",
+    "list_available_variables",
+    # Retrieval
+    "retrieve_era5_data",
+    # Memory
+    "MemoryManager",
+    "get_memory",
+]
