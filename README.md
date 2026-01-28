@@ -13,7 +13,13 @@
 
 ---
 
-**Vostok** is a high-performance, intelligent climate analysis agent designed for oceanographers, climate scientists, and data engineers. By bridging Earthmover's cloud-optimized ERA5 archives with advanced LLM reasoning, Vostok enables seamless, natural language-driven exploration of planetary-scale climate data.
+**Vostok** is a high-performance, intelligent climate analysis agent designed for oceanographers, climate scientists, and data engineers. Built on the cutting-edge **Icechunk** transactional storage engine, Vostok bridges Earthmover's cloud-optimized ERA5 archives with advanced LLM reasoning, enabling seamless, natural language-driven exploration of planetary-scale climate data.
+
+### ❄️ Powered By
+
+This project is made possible by the incredible open-source work from the **[Earthmover](https://earthmover.io)** team:
+- **[Icechunk](https://github.com/earthmover-io/icechunk)**: The transactional storage engine for Zarr that provides the backbone for our high-performance data access.
+- **Arraylake**: The cloud-native data lake that hosts the global ERA5 reanalysis archives used by this agent.
 
 ### 🚀 Core Pillars
 
@@ -198,3 +204,9 @@ plt.close()
 ## License
 
 MIT License
+
+---
+
+<div align="center">
+  <p>Special thanks to the <b>Icechunk</b> and <b>Earthmover</b> teams for their pioneering work in cloud-native scientific data storage. Vostok stands on the shoulders of giants.</p>
+</div>
