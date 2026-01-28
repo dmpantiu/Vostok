@@ -12,6 +12,7 @@ Features:
 """
 
 import os
+import sys
 import re
 import time
 import queue
@@ -251,10 +252,41 @@ print("Pre-loaded: pandas (pd), numpy (np), xarray (xr), matplotlib.pyplot (plt)
             with open(filepath, 'wb') as f:
                 f.write(image_data)
             logger.info(f"Plot saved: {filepath}")
+            
+            # Display in terminal if supported
+            self._display_image_in_terminal(base64_data)
+            
             return str(filepath)
         except Exception as e:
             logger.error(f"Failed to save plot: {e}")
             return ""
+
+    def _display_image_in_terminal(self, base64_data: str):
+        """Display image inline in supported terminals (iTerm2, VSCode)."""
+        # iTerm2 / VSCode inline image protocol
+        # \033]1337;File=inline=1:{base64}\a
+        try:
+            # Check if we are likely in a supported terminal
+            term_program = os.environ.get("TERM_PROGRAM", "")
+            term = os.environ.get("TERM", "")
+            
+            supported = False
+            if "iTerm.app" in term_program:
+                supported = True
+            elif "vscode" in term_program:
+                supported = True
+            elif "xterm-kitty" in term:
+                # Kitty has a different protocol, but for now we focus on iTerm2/VSCode
+                pass
+                
+            if supported:
+                # Print the escape code to stdout
+                # We use width=auto to let the terminal decide size, but you can enforce width=100% etc.
+                # For VSCode, sometimes explicitly setting width helps.
+                sys.stdout.write(f"\033]1337;File=inline=1;width=auto;preserveAspectRatio=1:{base64_data}\a\n")
+                sys.stdout.flush()
+        except Exception as e:
+            logger.warning(f"Failed to display image in terminal: {e}")
 
     def get_captured_plots(self) -> List[str]:
         """Get list of all captured plot paths."""
