@@ -257,7 +257,7 @@ class VostokChat {
                 break;
 
             case 'plot':
-                this.addPlot(data.data, data.path);
+                this.addPlot(data.data, data.path, data.code || '');
                 break;
 
             case 'complete':
@@ -334,7 +334,7 @@ class VostokChat {
         this.scrollToBottom();
     }
 
-    addPlot(base64Data, path) {
+    addPlot(base64Data, path, code = '') {
         this.removeThinkingIndicator();
 
         if (!this.currentAssistantMessage) {
@@ -347,14 +347,40 @@ class VostokChat {
         figure.className = 'plot-figure';
 
         const imgSrc = `data:image/png;base64,${base64Data}`;
+        const codeId = `code-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         figure.innerHTML = `
             <img src="${imgSrc}" alt="Generated plot">
             <div class="plot-actions">
                 <button class="enlarge-btn" title="Enlarge">Enlarge</button>
                 <button class="download-btn" title="Download">Download</button>
+                ${code && code.trim() ? `<button class="code-btn" title="Show Code">Show Code</button>` : ''}
             </div>
         `;
+
+        // Add code block separately if code exists
+        if (code && code.trim()) {
+            const codeDiv = document.createElement('div');
+            codeDiv.className = 'plot-code';
+            codeDiv.style.display = 'none';
+
+            const pre = document.createElement('pre');
+            const codeEl = document.createElement('code');
+            codeEl.className = 'language-python hljs';
+
+            // Highlight immediately
+            try {
+                const highlighted = hljs.highlight(code, { language: 'python' });
+                codeEl.innerHTML = highlighted.value;
+            } catch (e) {
+                console.error('Highlight error:', e);
+                codeEl.textContent = code;
+            }
+
+            pre.appendChild(codeEl);
+            codeDiv.appendChild(pre);
+            figure.appendChild(codeDiv);
+        }
 
         // Add enlarge action
         figure.querySelector('.enlarge-btn').addEventListener('click', () => {
@@ -369,6 +395,22 @@ class VostokChat {
             link.download = filename;
             link.click();
         });
+
+        // Add show code toggle
+        const codeBtn = figure.querySelector('.code-btn');
+        if (codeBtn) {
+            const codeDiv = figure.querySelector('.plot-code');
+
+            codeBtn.addEventListener('click', () => {
+                if (codeDiv.style.display === 'none') {
+                    codeDiv.style.display = 'block';
+                    codeBtn.textContent = 'Hide Code';
+                } else {
+                    codeDiv.style.display = 'none';
+                    codeBtn.textContent = 'Show Code';
+                }
+            });
+        }
 
         // Click on image to enlarge
         figure.querySelector('img').addEventListener('click', () => {

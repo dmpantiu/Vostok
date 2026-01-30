@@ -72,6 +72,9 @@ class JupyterKernelExecutor:
         # Callback for web interface plot streaming
         self._on_plot_callback = on_plot_callback
 
+        # Track the last executed code for associating with plots
+        self._last_executed_code: str = ""
+
         self.km = KernelManager(kernel_name='python3')
         self.kc: Optional[KernelClient] = None
 
@@ -151,6 +154,9 @@ print("Pre-loaded: pandas (pd), numpy (np), xarray (xr), matplotlib.pyplot (plt)
         # Clean code (remove markdown code blocks if present)
         code = re.sub(r"^(\s|`)*(?i:python)?\s*", "", code)
         code = re.sub(r"(\s|`)*$", "", code)
+
+        # Store code for associating with any plots generated
+        self._last_executed_code = code
 
         msg_id = self.kc.execute(code)
 
@@ -268,7 +274,7 @@ print("Pre-loaded: pandas (pd), numpy (np), xarray (xr), matplotlib.pyplot (plt)
             # Call the plot callback if registered (for web interface)
             if self._on_plot_callback:
                 try:
-                    self._on_plot_callback(base64_data, str(filepath))
+                    self._on_plot_callback(base64_data, str(filepath), self._last_executed_code)
                 except Exception as e:
                     logger.error(f"Plot callback error: {e}")
 

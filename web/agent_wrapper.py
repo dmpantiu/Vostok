@@ -62,9 +62,9 @@ class AgentSession:
             self._repl_tool = SuperbPythonREPLTool(working_dir=os.getcwd())
 
             # Set up plot callback using the proper method
-            def on_plot_captured(base64_data: str, filepath: str):
+            def on_plot_captured(base64_data: str, filepath: str, code: str = ""):
                 logger.info(f"Plot captured, adding to queue: {filepath}")
-                self._plot_queue.put((base64_data, filepath))
+                self._plot_queue.put((base64_data, filepath, code))
 
             self._repl_tool._executor.set_plot_callback(on_plot_captured)
             logger.info("Plot callback registered")
@@ -173,8 +173,10 @@ class AgentSession:
             # Send any captured plots
             plots = self.get_pending_plots()
             logger.info(f"Sending {len(plots)} plots to client")
-            for base64_data, filepath in plots:
-                await stream_callback("plot", "", data=base64_data, path=filepath)
+            for plot_data in plots:
+                base64_data, filepath = plot_data[0], plot_data[1]
+                code = plot_data[2] if len(plot_data) > 2 else ""
+                await stream_callback("plot", "", data=base64_data, path=filepath, code=code)
 
             # Save to memory
             memory.add_message("assistant", response_text)

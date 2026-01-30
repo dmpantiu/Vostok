@@ -211,8 +211,7 @@ main {
     padding: 0.75rem;
     border-radius: 0.25rem;
     overflow-x: auto;
-    background: #263238;
-    color: #fff;
+    background: #282c34;
     font-size: 0.8125rem;
 }
 
@@ -234,11 +233,13 @@ main {
 
 .plot-figure {
     margin: 0;
-    display: inline-block;
+    display: block;
+    max-width: 600px;
 }
 
 .plot-figure img {
     max-width: 100%;
+    width: auto;
     height: auto;
     border-radius: 0.25rem;
     border: 1px solid var(--border-color);
@@ -270,6 +271,32 @@ main {
     background: var(--accent-color);
     color: white;
     border-color: var(--accent-color);
+}
+
+/* Plot code display */
+.plot-code {
+    margin-top: 0.75rem;
+    border-radius: 0.375rem;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    max-width: 100%;
+}
+
+.plot-code pre {
+    margin: 0;
+    padding: 0.75rem;
+    background: #282c34;
+    overflow-x: auto;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    white-space: pre;
+    max-width: 100%;
+}
+
+.plot-code code {
+    font-family: "SF Mono", Monaco, Consolas, "Liberation Mono", monospace;
+    background: transparent;
+    color: #abb2bf;
 }
 
 /* Input area */
