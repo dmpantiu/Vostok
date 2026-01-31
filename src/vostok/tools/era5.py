@@ -26,12 +26,12 @@ import xarray as xr
 from pydantic import BaseModel, Field, field_validator
 from langchain_core.tools import StructuredTool
 
-from ..config import (
+from config import (
     DATA_DIR, PLOTS_DIR,
     get_variable_info, get_short_name, list_available_variables,
     ERA5_VARIABLES, GEOGRAPHIC_REGIONS, format_file_size
 )
-from ..memory import get_memory
+from memory import get_memory
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -117,11 +117,9 @@ class ERA5RetrievalArgs(BaseModel):
     @field_validator('variable_id')
     @classmethod
     def validate_variable(cls, v: str) -> str:
-        from ..config import get_all_short_names
-        valid_vars = get_all_short_names()
         short_name = get_short_name(v)
-        if short_name not in valid_vars:
-            raise ValueError(f"Unknown variable '{v}'. Valid options: {', '.join(sorted(valid_vars))}")
+        if short_name not in ['sst', 't2', 'u10', 'v10', 'sp', 'mslp', 'tcc', 'cp', 'lsp', 'tp']:
+            logger.warning(f"Variable '{v}' may not be available. Will attempt anyway.")
         return v
 
 
@@ -129,39 +127,43 @@ class ERA5RetrievalArgs(BaseModel):
 # HELPER FUNCTIONS
 # ============================================================================
 
+def _format_coord(value: float) -> str:
+    """Format coordinates for stable, filename-safe identifiers."""
+    if abs(value) < 0.005:
+        value = 0.0
+    return f"{value:.2f}"
+
+
 def generate_filename(
-    variable: str, 
-    query_type: str, 
-    start: str, 
+    variable: str,
+    query_type: str,
+    start: str,
     end: str,
+    min_latitude: float,
+    max_latitude: float,
+    min_longitude: float,
+    max_longitude: float,
     region: Optional[str] = None,
-    lat_bounds: Optional[Tuple[float, float]] = None,
-    lon_bounds: Optional[Tuple[float, float]] = None
 ) -> str:
-    """Generate a descriptive filename for the dataset including region/bounds."""
+    """Generate a descriptive filename for the dataset."""
     clean_var = variable.replace('_', '')
     clean_start = start.replace('-', '')
     clean_end = end.replace('-', '')
-    
-    # Add region or compact lat/lon to filename
     if region:
-        region_tag = region.lower().replace(' ', '_')
-    elif lat_bounds and lon_bounds:
-        # Create compact bounds tag: lat1to52_lon8to15
-        lat_min, lat_max = lat_bounds
-        lon_min, lon_max = lon_bounds
-        region_tag = f"lat{int(lat_min)}to{int(lat_max)}_lon{int(lon_min)}to{int(lon_max)}"
+        region_tag = region.lower()
     else:
-        region_tag = "global"
-    
-    return f"era5_{clean_var}_{query_type}_{region_tag}_{clean_start}_{clean_end}.zarr"
+        region_tag = (
+            f"lat{_format_coord(min_latitude)}_{_format_coord(max_latitude)}"
+            f"_lon{_format_coord(min_longitude)}_{_format_coord(max_longitude)}"
+        )
+    return f"era5_{clean_var}_{query_type}_{clean_start}_{clean_end}_{region_tag}.zarr"
 
 
 def get_bounds_from_region(region: str) -> Optional[Tuple[float, float, float, float]]:
     """Get lat/lon bounds from a named region."""
     if region and region.lower() in GEOGRAPHIC_REGIONS:
         r = GEOGRAPHIC_REGIONS[region.lower()]
-        return (r.min_lat, r.max_lat, r.min_lon, r.max_lon)
+        return (r["min_lat"], r["max_lat"], r["min_lon"], r["max_lon"])
     return None
 
 
@@ -279,11 +281,15 @@ def retrieve_era5_data(
         )
 
     # Apply region bounds if specified
+    region_tag = None
     if region:
         bounds = get_bounds_from_region(region)
         if bounds:
             min_latitude, max_latitude, min_longitude, max_longitude = bounds
-            logger.info(f"Using region '{region}': lat=[{min_latitude}, {max_latitude}], lon=[{min_longitude}, {max_longitude}]")
+            region_tag = region.lower()
+            logger.info(
+                f"Using region '{region}': lat=[{min_latitude}, {max_latitude}], lon=[{min_longitude}, {max_longitude}]"
+            )
         else:
             logger.warning(f"Unknown region '{region}', using provided coordinates")
 
@@ -296,10 +302,15 @@ def retrieve_era5_data(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     filename = generate_filename(
-        short_var, query_type, start_date, end_date,
-        region=region,
-        lat_bounds=(min_latitude, max_latitude),
-        lon_bounds=(min_longitude, max_longitude)
+        short_var,
+        query_type,
+        start_date,
+        end_date,
+        min_latitude,
+        max_latitude,
+        min_longitude,
+        max_longitude,
+        region_tag,
     )
     local_path = str(output_dir / filename)
 
@@ -395,45 +406,19 @@ def retrieve_era5_data(
             req_max = max_longitude % 360
 
             if req_min > req_max:
-                # Crosses prime meridian - stitch two slices together
-                logger.info("Region crosses prime meridian. Stitching datasets...")
-                print("Region crosses prime meridian. Downloading and stitching two slices...")
-                
-                # Slice 1: req_min to 360 (Western portion in 0-360 terms)
-                subset_west = ds[short_var].sel(
-                    time=slice(start_date, end_date),
-                    latitude=lat_slice,
-                    longitude=slice(req_min, 359.75)
-                )
-                # Slice 2: 0 to req_max (Eastern portion)
-                subset_east = ds[short_var].sel(
-                    time=slice(start_date, end_date),
-                    latitude=lat_slice,
-                    longitude=slice(0, req_max)
-                )
-                # Shift East slice to maintain continuous coordinates (0 → 360, 5 → 365, etc.)
-                subset_east = subset_east.assign_coords(
-                    longitude=subset_east.longitude + 360
-                )
-                # Combine and ensure sorted monotonic order
-                subset = xr.concat([subset_west, subset_east], dim="longitude")
-                subset = subset.sortby("longitude")
+                # Crosses prime meridian - for now just take the eastern part
+                lon_slice = slice(req_min, 359.75)
+                logger.warning("Region crosses prime meridian - taking eastern portion only")
             else:
                 lon_slice = slice(req_min, req_max)
-                subset = ds[short_var].sel(
-                    time=slice(start_date, end_date),
-                    latitude=lat_slice,
-                    longitude=lon_slice
-                )
 
             # Subset the data
-            
-            # Check for empty result (e.g., future dates with no data)
-            if 'time' in subset.dims and subset.sizes['time'] == 0:
-                return (
-                    f"Error: No data found for the specified time range ({start_date} to {end_date}).\n"
-                    f"ERA5 reanalysis data has a ~5-day lag. Check that your dates are in the past."
-                )
+            print("Subsetting data...")
+            subset = ds[short_var].sel(
+                time=slice(start_date, end_date),
+                latitude=lat_slice,
+                longitude=lon_slice
+            )
 
             # Convert to dataset
             print("Preparing data for download...")
